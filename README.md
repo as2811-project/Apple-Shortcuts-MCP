@@ -49,6 +49,9 @@ Config:
 
 You can daisy chain the usage of these tools, for example: You can ask it to simply get the ingredients first, then separately ask it to create the list and add a calendar event.
 
+<img width="872" alt="image" src="https://github.com/user-attachments/assets/884b361c-542d-4dc4-817f-739d69e91fe1" />
+
+
 #### Troubleshooting
 
 Ensure you have Python, uv and other dependencies installed. On your Mac, create a "Groceries" list in your reminders app for the Shortcut itself to work properly.
