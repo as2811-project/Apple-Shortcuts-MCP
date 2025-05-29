@@ -30,7 +30,7 @@ Config:
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/sanandh/Desktop/Projects/Shortcuts-MCP",
+        "ABSOLUTE/PATH/TO/THIS/DIRECTORY",
         "run",
         "main.py"
       ],
