@@ -16,3 +16,9 @@ REFACTORING_COMPLETE.md
 settings.json
 
 .env
+test_grocery_tool.py
+combined_test.py
+coles_test.py
+test_script.py
+test_mcp_server.py
+example.py
