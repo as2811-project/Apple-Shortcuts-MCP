@@ -1,6 +1,7 @@
 """Pydantic models for the Shortcuts MCP server."""
 
 from pydantic import BaseModel
+from typing import Optional, List
 
 
 class Ingredients(BaseModel):
@@ -14,3 +15,34 @@ class ToolResult(BaseModel):
     status: str
     message: str = ""
     data: dict = {}
+
+
+class StoreProduct(BaseModel):
+    """Model for a product from a grocery store."""
+    description: str
+    price: float
+    unit: Optional[str] = None
+
+
+class ItemComparison(BaseModel):
+    """Model for comparing a single item across stores."""
+    item: str
+    coles: Optional[StoreProduct] = None
+    woolworths: Optional[StoreProduct] = None
+
+
+class PriceComparisonSummary(BaseModel):
+    """Model for price comparison summary."""
+    coles_total: float
+    woolworths_total: float
+    cheaper_store: Optional[str] = None
+    savings: float
+
+
+class PriceComparisonResult(BaseModel):
+    """Model for complete price comparison results."""
+    status: str
+    items_compared: int
+    results: List[ItemComparison]
+    summary: PriceComparisonSummary
+    message: Optional[str] = None

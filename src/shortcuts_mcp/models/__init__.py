@@ -1,5 +1,19 @@
 """Models package for Shortcuts MCP."""
 
-from .schemas import Ingredients, ToolResult
+from .schemas import (
+    Ingredients,
+    ToolResult,
+    StoreProduct,
+    ItemComparison,
+    PriceComparisonSummary,
+    PriceComparisonResult
+)
 
-__all__ = ["Ingredients", "ToolResult"]
+__all__ = [
+    "Ingredients",
+    "ToolResult",
+    "StoreProduct",
+    "ItemComparison",
+    "PriceComparisonSummary",
+    "PriceComparisonResult"
+]

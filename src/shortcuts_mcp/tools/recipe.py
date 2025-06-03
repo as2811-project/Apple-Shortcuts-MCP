@@ -2,8 +2,8 @@
 
 import os
 from typing import Dict, Any
-from google.genai import types
 from google import genai
+from google.genai import types
 from mcp.server.fastmcp import FastMCP
 
 from ..server import BaseTool

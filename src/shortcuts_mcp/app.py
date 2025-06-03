@@ -4,7 +4,8 @@ from .server import BaseMCPServer
 from .tools.recipe import RecipeTool
 from .tools.shortcuts import ShortcutsTool
 from .tools.notes import NotesTool
-from .tools.calendar import CalendarTool
+from .tools.calendar_tool import CalendarTool
+from .tools.grocery import GroceryTool
 # from .tools.example import ExampleTool
 
 
@@ -33,6 +34,10 @@ class ShortcutsMCPServer(BaseMCPServer):
         # Register calendar tool
         calendar_tool = CalendarTool()
         self.register_tool(calendar_tool)
+
+        # Register grocery price comparison tool
+        grocery_tool = GroceryTool()
+        self.register_tool(grocery_tool)
 
 
 def main():
