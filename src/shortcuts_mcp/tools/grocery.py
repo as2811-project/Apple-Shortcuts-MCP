@@ -6,7 +6,7 @@ import json
 import re
 import time
 import random
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from mcp.server.fastmcp import FastMCP
 
 from ..server import BaseTool
@@ -29,6 +29,74 @@ class GroceryTool(BaseTool):
     def register_with_mcp(self, mcp: FastMCP) -> None:
         """Register grocery price comparison methods with MCP server."""
         mcp.tool()(self.compare_grocery_prices)
+
+    def _parse_item_with_weight(self, item_string: str) -> Tuple[str, Optional[float], Optional[str]]:
+        """
+        Parse item string to extract name, weight, and unit.
+
+        Examples:
+        - "garlic 100g" -> ("garlic", 100.0, "g")
+        - "carrots 1kg" -> ("carrots", 1.0, "kg") 
+        - "milk 3L" -> ("milk 3L", None, None)  # Keep volume in name
+        - "bread" -> ("bread", None, None)
+
+        Returns: (item_name, weight_amount, weight_unit)
+        """
+        # Regex to match weight patterns like "100g", "1kg", "1.5kg", "500g"
+        weight_pattern = r'^(.+?)\s+(\d+(?:\.\d+)?)\s*(g|kg)$'
+        match = re.match(weight_pattern, item_string.strip(), re.IGNORECASE)
+
+        if match:
+            item_name = match.group(1).strip()
+            weight_amount = float(match.group(2))
+            weight_unit = match.group(3).lower()
+            return item_name, weight_amount, weight_unit
+        else:
+            # No weight specified, return as-is
+            return item_string.strip(), None, None
+
+    def _calculate_price_for_weight(self, product_data: Dict[str, Any],
+                                    requested_weight: float, requested_unit: str) -> Dict[str, Any]:
+        """
+        Calculate price based on requested weight for weighted items.
+        """
+        if not product_data.get("is_weighted"):
+            # Not a weighted item, return package price as-is
+            return {
+                **product_data,
+                "note": f"Fixed package price (requested {requested_weight}{requested_unit})"
+            }
+
+        # Extract per-kg price from the unit string
+        unit_str = product_data.get("unit", "")
+        per_kg_match = re.search(r'\$(\d+\.?\d*)\s*per\s*1?kg', unit_str)
+
+        if per_kg_match:
+            per_kg_price = float(per_kg_match.group(1))
+
+            # Convert requested weight to kg
+            if requested_unit in ['g', 'gram', 'grams']:
+                weight_in_kg = requested_weight / 1000
+            elif requested_unit in ['kg', 'kilo', 'kilos', 'kilogram']:
+                weight_in_kg = requested_weight
+            else:
+                # Default to grams if unclear
+                weight_in_kg = requested_weight / 1000
+
+            calculated_price = per_kg_price * weight_in_kg
+
+            return {
+                **product_data,
+                "price": round(calculated_price, 2),
+                "calculated_for": f"{requested_weight}{requested_unit}",
+                "original_per_kg_price": per_kg_price
+            }
+
+        # Fallback: couldn't parse per-kg price, return original
+        return {
+            **product_data,
+            "note": f"Could not calculate for {requested_weight}{requested_unit}, showing package price"
+        }
 
     @cache
     def _get_coles_build_id(self) -> str:
@@ -67,9 +135,34 @@ class GroceryTool(BaseTool):
             for item in results:
                 if item.get("_type") == "PRODUCT":
                     desc = item.get("description", "<no description>")
-                    price = item.get("pricing", {}).get("now")
+                    pricing = item.get("pricing", {})
+
+                    unit_info = pricing.get("unit", {})
+                    is_weighted = unit_info.get("isWeighted", False)
+
+                    # Use comparable price only for truly weighted items
+                    comparable = pricing.get("comparable")
+                    if comparable and is_weighted:
+                        price_match = re.search(r'\$(\d+\.?\d*)', comparable)
+                        if price_match:
+                            price = float(price_match.group(1))
+                            return {
+                                "description": desc,
+                                "price": price,
+                                "unit": comparable,
+                                "is_weighted": True
+                            }
+
+                    # Use regular "now" price for pre-packaged items or as fallback
+                    price = pricing.get("now")
                     if price is not None:
-                        return {"description": desc, "price": price}
+                        unit_display = comparable if comparable else ""
+                        return {
+                            "description": desc,
+                            "price": price,
+                            "unit": unit_display,
+                            "is_weighted": is_weighted
+                        }
             return None
         except Exception as e:
             print(f"Error searching Coles for '{term}': {e}")
@@ -104,8 +197,9 @@ class GroceryTool(BaseTool):
     def compare_grocery_prices(self, items: List[str]) -> Dict[str, Any]:
         """
         Compare grocery prices between Coles and Woolworths for a list of items.
+        Items can include weights: ["garlic 100g", "carrots 1kg", "milk 3L", "bread"]
 
-        :param items: List of grocery items to search for
+        :param items: List of grocery items to search for, optionally with weights
         :return: Detailed price comparison results
         """
         try:
@@ -115,27 +209,46 @@ class GroceryTool(BaseTool):
             comparison_results = []
 
             for item in items:
-                print(f"🔍 Searching for: {item}")
+                # Parse item to separate name and weight
+                item_name, requested_weight, weight_unit = self._parse_item_with_weight(
+                    item)
 
-                # Search both stores
-                coles_result = self._search_coles(item, build_id)
-                woolies_result = self._search_woolworths(item)
+                print(f"🔍 Searching for: {item_name}" +
+                      (f" (calculating for {requested_weight}{weight_unit})" if requested_weight else ""))
+
+                coles_result = self._search_coles(item_name, build_id)
+                woolies_result = self._search_woolworths(item_name)
 
                 # Process results
                 item_comparison = {
                     "item": item,
+                    "item_name": item_name,
+                    "requested_amount": f"{requested_weight}{weight_unit}" if requested_weight else None,
                     "coles": None,
                     "woolworths": None
                 }
 
                 if coles_result:
+                    # Calculate price based on requested weight if specified
+                    if requested_weight and weight_unit:
+                        coles_processed = self._calculate_price_for_weight(
+                            coles_result, requested_weight, weight_unit)
+                    else:
+                        coles_processed = coles_result
+
                     item_comparison["coles"] = {
-                        "description": coles_result["description"],
-                        "price": coles_result["price"]
+                        "description": coles_processed["description"],
+                        "price": coles_processed["price"],
+                        "unit": coles_processed.get("unit", ""),
+                        "is_weighted": coles_processed.get("is_weighted", False),
+                        **{k: v for k, v in coles_processed.items()
+                           if k in ["calculated_for", "note", "original_per_kg_price"]}
                     }
-                    coles_total += coles_result["price"]
+                    coles_total += coles_processed["price"]
 
                 if woolies_result:
+                    # For Woolworths, we typically get package prices
+                    # TODO: Could add weight calculation logic here too if needed
                     item_comparison["woolworths"] = {
                         "description": woolies_result["description"],
                         "price": woolies_result["price"],

@@ -22,6 +22,7 @@ class StoreProduct(BaseModel):
     description: str
     price: float
     unit: Optional[str] = None
+    is_weighted: Optional[bool] = False
 
 
 class ItemComparison(BaseModel):
