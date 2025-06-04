@@ -98,6 +98,42 @@ class GroceryTool(BaseTool):
             "note": f"Could not calculate for {requested_weight}{requested_unit}, showing package price"
         }
 
+    def _calculate_woolworths_price_for_weight(self, product_data: Dict[str, Any],
+                                               requested_weight: float, requested_unit: str) -> Dict[str, Any]:
+        """
+        Calculate price based on requested weight for Woolworths weighted items.
+        """
+        unit_str = product_data.get("unit", "")
+
+        # Look for per-kg pricing in Woolworths format like "$11.50 / 1KG"
+        per_kg_match = re.search(
+            r'\$(\d+\.?\d*)\s*/\s*1?kg', unit_str, re.IGNORECASE)
+
+        if per_kg_match:
+            per_kg_price = float(per_kg_match.group(1))
+
+            if requested_unit in ['g', 'gram', 'grams']:
+                weight_in_kg = requested_weight / 1000
+            elif requested_unit in ['kg', 'kilo', 'kilos', 'kilogram']:
+                weight_in_kg = requested_weight
+            else:
+                weight_in_kg = requested_weight / 1000
+
+            calculated_price = per_kg_price * weight_in_kg
+
+            return {
+                **product_data,
+                "price": round(calculated_price, 2),
+                "calculated_for": f"{requested_weight}{requested_unit}",
+                "original_per_kg_price": per_kg_price
+            }
+
+        # Fallback: couldn't parse per-kg price, return original
+        return {
+            **product_data,
+            "note": f"Could not calculate for {requested_weight}{requested_unit}, showing package price"
+        }
+
     @cache
     def _get_coles_build_id(self) -> str:
         """Get the build ID required for Coles API calls."""
@@ -247,14 +283,21 @@ class GroceryTool(BaseTool):
                     coles_total += coles_processed["price"]
 
                 if woolies_result:
-                    # For Woolworths, we typically get package prices
-                    # TODO: Could add weight calculation logic here too if needed
+                    # Calculate price based on requested weight if specified
+                    if requested_weight and weight_unit:
+                        woolies_processed = self._calculate_woolworths_price_for_weight(
+                            woolies_result, requested_weight, weight_unit)
+                    else:
+                        woolies_processed = woolies_result
+
                     item_comparison["woolworths"] = {
-                        "description": woolies_result["description"],
-                        "price": woolies_result["price"],
-                        "unit": woolies_result["unit"]
+                        "description": woolies_processed["description"],
+                        "price": woolies_processed["price"],
+                        "unit": woolies_processed.get("unit", ""),
+                        **{k: v for k, v in woolies_processed.items()
+                           if k in ["calculated_for", "note", "original_per_kg_price"]}
                     }
-                    woolies_total += woolies_result["price"]
+                    woolies_total += woolies_processed["price"]
 
                 comparison_results.append(item_comparison)
 
